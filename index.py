@@ -7,6 +7,7 @@ import os
 import colorlover as cl
 import dash_core_components as dcc
 import dash_html_components as html
+import numpy as np
 import plotly.colors
 import plotly.graph_objs as go
 import pandas as pd
@@ -43,7 +44,7 @@ IRIS_URL = (
 def df_from_url(url):
     print('loading pandas df from url {}'.format(url))
 
-    ext = os.path.splitext(url)[1]
+    ext = os.path.splitext(url)[1].lower()
 
     if ext in ['.xls', '.xlsx']:
         df = pd.read_excel(url)
@@ -223,7 +224,7 @@ def file_upload(contents, filename, current_value):
     contenttype, contentstr = contents.split(',')
     decoded = base64.b64decode(contentstr)
 
-    ext = os.path.splitext(filename)[-1]
+    ext = os.path.splitext(filename)[-1].lower()
 
     print('attempting to load file {}'.format(filename))
 
@@ -338,21 +339,35 @@ def update_color_options(target, urltrigger, filetrigger):
         return 'Jet'
 
 
+# fuck dates to fucking death
+def is_date(col):
+    return DF[col].dtype.kind == 'M'
+
+
 # load categorical as numbers we can acutally include in our parallel
 # coordinates plots
 def is_cat(col):
     if col == 'none' and col not in DF.columns:
         return False
+    elif is_date(col):
+        return False
     else:
-        return DF[col].dtype.kind == 'O'
+        return (
+            DF[col].dtype.kind == 'O'
+            and not isinstance(DF[col].iloc[0], pd.Timestamp)
+        )
 
 
 def smart_load(col):
     """convert categories to category values"""
     if col == 'none' and col not in DF.columns:
         return 1
+    elif is_date(col):
+        return DF[col].astype('category').cat.codes
+    elif is_cat(col):
+        return DF[col].astype('category').cat.codes
     else:
-        return DF[col].astype('category').cat.codes if is_cat(col) else DF[col]
+        return DF[col]
 
 
 def smart_colorscale(colorscale, target):
@@ -380,21 +395,34 @@ def smart_linestyle(target, colorscale):
 def smart_dimension(feature):
     dimdict = {
         'label': feature,
-        'values': smart_load(feature)
+        'values': smart_load(feature),
+        #'values': DF[feature],
+        'tickformat': '.2r'
     }
 
-    # round numeric values for the range
-    try:
-        _range = [
-            math.floor(DF[feature].min()),
-            math.ceil(DF[feature].max())
-        ]
-        rangeable = True
-    except TypeError:
-        rangeable = False
+    # tickvals and ticktext if categorical
+    if is_cat(feature):
+        c = DF[feature]
+        dimdict['tickvals'] = np.sort(c.cat.codes.unique())
+        dimdict['ticktext'] = c.cat.categories
 
-    if rangeable:
-        dimdict['range'] = _range
+    # round numeric values for the range
+    #try:
+    #    xmin = DF[feature].min()
+    #    xmax = DF[feature].max()
+    #    xdelta = xmax - xmin
+    #    xmin -= .01 * xdelta
+    #    xmax += .01 * xdelta
+    #    xmin = np.round(xmin, 4)
+    #    xmax = np.round(xmax, 4)
+    #    _range = [xmin, xmax]
+    #    rangeable = True
+    #except TypeError:
+    #    rangeable = False
+    #if rangeable:
+    #    dimdict['range'] = _range
+
+    # range is not the problem, it's the tick format (I think)
 
     # replace tickmarks with category names for categorical features
     #try:

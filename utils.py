@@ -1,20 +1,34 @@
+import datetime
 import sys
 
+import numpy as np
 import pandas as pd
 
 
-def tighten_up(df, category_num_thresh=12, verbose=True):
+
+def tighten_up(df, category_num_thresh=5000, verbose=True):
     """follow a few heuristics to reduce the size of the dataframe"""
     if verbose:
         s0 = sys.getsizeof(df)
 
+    # get dates out of there first
+    datecols = [_ for _ in df if 'date' in _.lower()]
+    for dc in datecols:
+        print('updating datecol: {}'.format(dc))
+        df.loc[:, dc] = pd.to_datetime(df[dc])
+
     # let's treat anything smaller than our threshold as a categorical
-    nu = df.nunique()
+    object_cols = df.dtypes[df.dtypes == object].index.values
+    nu = df[object_cols].nunique()
     nu = nu[nu < category_num_thresh]
     categories = nu.index
-    for col in categories:
+    for col in set(categories).difference(datecols):
         print('categorizing {}'.format(col))
-        df.loc[:, col] = df[col].astype('category')
+        cattype = pd.api.types.CategoricalDtype(
+            categories=np.sort(df[col].unique()),
+            ordered=True
+        )
+        df.loc[:, col] = df[col].astype(cattype)
 
     del nu
 
