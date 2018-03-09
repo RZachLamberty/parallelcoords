@@ -41,8 +41,19 @@ IRIS_URL = (
 @CACHE.memoize()
 def df_from_url(url):
     print('loading pandas df from url {}'.format(url))
-    df = pd.read_csv(url)
+
+    ext = os.path.splitext(url)[1]
+
+    if ext in ['.xls', '.xlsx']:
+        df = pd.read_excel(url)
+    elif ext in ['.dat']:
+        df = pd.read_fwf(url)
+    else:
+        # just *try* csv
+        df = pd.read_csv(url)
+
     tighten_up(df)
+
     return df
 
 DF = df_from_url(IRIS_URL)
@@ -176,7 +187,7 @@ app.layout = html.Div(className="container", children=[
     ]),
     html.Hr(),
     html.Div(className="row", children=[dcc.Markdown(DESCRIPTION)]),
-], style={'max-width': 1080})
+], style={'max-width': 'none'})
 
 
 # someone pressed the url upload submit button -- get the new url, cache it,
