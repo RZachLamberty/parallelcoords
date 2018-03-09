@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import base64
 import io
+import math
 import os
 
 import colorlover as cl
@@ -125,7 +126,7 @@ app.layout = html.Div(className="container", children=[
                     id='target-selector-dropdown',
                     options=[
                         {'label': col, 'value': col} for col in DF.columns
-                    ],
+                    ] + [{'label': 'none', 'value': 'none'}],
                     value=DF.columns[-1]
                 )
             ]),
@@ -276,7 +277,9 @@ def update_feature_values(urltrigger, filetrigger):
     ]
 )
 def update_target_options(urltrigger, filetrigger):
-    return [{'label': col, 'value': col} for col in DF.columns]
+    return [
+        {'label': col, 'value': col} for col in DF.columns
+    ] + [{'label': 'none', 'value': 'none'}]
 
 
 @app.callback(
@@ -338,15 +341,23 @@ def update_color_options(target, urltrigger, filetrigger):
 # load categorical as numbers we can acutally include in our parallel
 # coordinates plots
 def is_cat(col):
-    return DF[col].dtype.kind == 'O'
+    if col == 'none' and col not in DF.columns:
+        return False
+    else:
+        return DF[col].dtype.kind == 'O'
 
 
 def smart_load(col):
     """convert categories to category values"""
-    return DF[col].astype('category').cat.codes if is_cat(col) else DF[col]
+    if col == 'none' and col not in DF.columns:
+        return 1
+    else:
+        return DF[col].astype('category').cat.codes if is_cat(col) else DF[col]
 
 
 def smart_colorscale(colorscale, target):
+    if target == 'none' and target not in DF.columns:
+        return colorscale
     if is_cat(target):
         t = DF[target].astype('category')
         n = t.nunique()
@@ -365,6 +376,40 @@ def smart_linestyle(target, colorscale):
         'showscale': not is_cat(target)
     }
 
+
+def smart_dimension(feature):
+    dimdict = {
+        'label': feature,
+        'values': smart_load(feature)
+    }
+
+    # round numeric values for the range
+    try:
+        _range = [
+            math.floor(DF[feature].min()),
+            math.ceil(DF[feature].max())
+        ]
+        rangeable = True
+    except TypeError:
+        rangeable = False
+
+    if rangeable:
+        dimdict['range'] = _range
+
+    # replace tickmarks with category names for categorical features
+    #try:
+    #    print('trying to access category values for {}'.format(feature))
+    #    print('DF[feature].dtype = {}'.format(DF[feature].dtype))
+    #    categories = DF[feature].cat.categories
+    #    print('categories are: {}'.format(categories))
+    #    assert len(categories) < 15
+    #    dimdict['tickvals'] = categories
+    #except Exception as e:
+    #    print('had an exception: {}'.format(e))
+
+    return dimdict
+
+
 # update the graph when any of the side panel elements change, or the upload
 # of a dataframe trigger element is updated
 @app.callback(
@@ -378,18 +423,13 @@ def smart_linestyle(target, colorscale):
     ]
 )
 def update_figure(features, target, colorscale, urltrigger, filetrigger):
+    #for feature in features:
+    #    print(feature)
     return {
         'data': [
             go.Parcoords(
                 line=smart_linestyle(target, colorscale),
-                dimensions=[
-                    {
-                        #'range': [DF[feature].min(), DF[feature].max()],
-                        'label': feature,
-                        'values': smart_load(feature),
-                    }
-                    for feature in features
-                ]
+                dimensions=[smart_dimension(feature) for feature in features]
             )
         ],
     }
